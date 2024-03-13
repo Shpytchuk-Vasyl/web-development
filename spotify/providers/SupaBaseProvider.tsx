@@ -13,7 +13,6 @@ const SupabaseProvider: React.FC<SupabaseProviderProps> = ({ children }) => {
   const [supabaseClient] = useState(() => {
     return createClientComponentClient<Database>();
   });
-  console.log(supabaseClient);
   return (
     <SessionContextProvider supabaseClient={supabaseClient}>
       {children}
