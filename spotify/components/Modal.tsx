@@ -2,7 +2,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { IoMdClose } from "react-icons/io";
 
 interface ModalProps {
-  isOpen: boolean;
+  isOpen?: boolean;
   onChange: (open: boolean) => void;
   title: string;
   description: string;
@@ -10,7 +10,7 @@ interface ModalProps {
 }
 
 const Modal: React.FC<ModalProps> = ({
-  isOpen,
+  isOpen = false,
   onChange,
   title,
   description,

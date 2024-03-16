@@ -5,15 +5,19 @@ import useUploadModal from "@/hooks/useUploadModal";
 import { useUser } from "@/hooks/useUser";
 import { AiOutlinePlus } from "react-icons/ai";
 import { TbPlaylist } from "react-icons/tb";
+import MediaItem from "./MediaItem";
+import { Song } from "@/types";
+import useOnPlay from "@/hooks/useOnPlay";
 
 interface LibraryProps {
-  // children: React.ReactNode;
+  songs?: Song[];
 }
 
-const Library: React.FC<LibraryProps> = ({}) => {
+const Library: React.FC<LibraryProps> = ({ songs = [] }) => {
   const authModal = useAuthModal();
   const aploadModal = useUploadModal();
-  const { user } = useUser();
+  const user  = useUser();
+  const onPlay = useOnPlay(songs);
   const handleClick = () => {
     if (!user) return authModal.onOpen();
     //Todo: subscription check
@@ -50,17 +54,17 @@ const Library: React.FC<LibraryProps> = ({}) => {
           >
             Libraries
           </p>
-          <AiOutlinePlus
-            onClick={handleClick}
-            size={20}
-            className="
+        </div>
+        <AiOutlinePlus
+          onClick={handleClick}
+          size={20}
+          className="
             text-neutral-400
             cursor-pointer
             hover:text-white
             transition
           "
-          />
-        </div>
+        />
       </div>
       <div
         className="
@@ -71,7 +75,9 @@ const Library: React.FC<LibraryProps> = ({}) => {
               px-3
         "
       >
-        Songs
+        {songs.map((item) => (
+          <MediaItem key={item.id} data={item} onClick={(id: string) => onPlay(id)} />
+        ))}
       </div>
     </div>
   );
