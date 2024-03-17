@@ -8,19 +8,21 @@ import { TbPlaylist } from "react-icons/tb";
 import MediaItem from "./MediaItem";
 import { Song } from "@/types";
 import useOnPlay from "@/hooks/useOnPlay";
+import useSubscribeModal from "@/hooks/useSubscribeModal";
 
 interface LibraryProps {
   songs?: Song[];
 }
 
 const Library: React.FC<LibraryProps> = ({ songs = [] }) => {
+  const subscribeModal = useSubscribeModal();
   const authModal = useAuthModal();
   const aploadModal = useUploadModal();
-  const user  = useUser();
+  const {user, subscription} = useUser();
   const onPlay = useOnPlay(songs);
   const handleClick = () => {
     if (!user) return authModal.onOpen();
-    //Todo: subscription check
+    if (!subscription) return subscribeModal.onOpen();
     return aploadModal.onOpen();
   };
 
@@ -76,7 +78,11 @@ const Library: React.FC<LibraryProps> = ({ songs = [] }) => {
         "
       >
         {songs.map((item) => (
-          <MediaItem key={item.id} data={item} onClick={(id: string) => onPlay(id)} />
+          <MediaItem
+            key={item.id}
+            data={item}
+            onClick={(id: string) => onPlay(id)}
+          />
         ))}
       </div>
     </div>

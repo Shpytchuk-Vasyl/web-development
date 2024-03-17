@@ -3,12 +3,12 @@
 import { Price, ProductWithPrices } from "@/types";
 import Modal from "./Modal";
 import Button from "./Button";
-import { subscribe } from "diagnostics_channel";
 import { useState } from "react";
 import { useUser } from "@/hooks/useUser";
 import toast from "react-hot-toast";
 import { postData } from "@/libs/helpers";
 import { getStripe } from "@/libs/stripeClient";
+import useSubscribeModal from "@/hooks/useSubscribeModal";
 
 interface ModalProviderProps {
   products: ProductWithPrices[];
@@ -25,8 +25,13 @@ const formatPrice = (price: Price) => {
 };
 
 const SubscribeModal: React.FC<ModalProviderProps> = ({ products }) => {
+  const subscribeModal = useSubscribeModal();
   const [priceIdLoading, setPriceIdLoading] = useState<string | null>(null);
   const { user, isLoading, subscription } = useUser();
+
+  const onChange = (open: boolean) => {
+    if (!open) subscribeModal.onClose();
+  };
 
   const handleCheckout = async (price: Price) => {
     if (!user) return toast.error("You need to be logged in to subscribe");
@@ -42,7 +47,7 @@ const SubscribeModal: React.FC<ModalProviderProps> = ({ products }) => {
       const stripe = await getStripe();
       stripe?.redirectToCheckout({ sessionId });
     } catch (error) {
-        console.log(error);
+      console.log(error);
       toast.error("An error occurred, please try again");
     } finally {
       setPriceIdLoading(null);
@@ -52,7 +57,7 @@ const SubscribeModal: React.FC<ModalProviderProps> = ({ products }) => {
   let content = <div className="text-center"> No products available</div>;
 
   if (subscription)
-    return <div className="text-center">You already have a subscription</div>;
+    content = <div className="text-center">You already have a subscription</div>;
 
   if (products.length > 0) {
     content = (
@@ -80,8 +85,8 @@ const SubscribeModal: React.FC<ModalProviderProps> = ({ products }) => {
     <Modal
       title="Subscribe to Spotify Premium"
       description="Listen to music ad-free, offline, and with no limits."
-      isOpen={true}
-      onChange={() => {}}
+      isOpen={subscribeModal.isOpen}
+      onChange={onChange}
     >
       {content}
     </Modal>

@@ -1,23 +1,27 @@
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import {  cookies } from "next/headers";
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { stripe } from "@/libs/stripe";
-import { getUrl } from "@/libs/helpers";
-import { createOrRetriveCustomer } from "@/libs/supabaseAdmin";
+import { getURL } from "@/libs/helpers";
+import { createOrRetrieveCustomer } from "@/libs/supabaseAdmin";
 
-export async function POST(req: Request) {
-  const { price, quantity = 1, metadata = {} } = await req.json();
+export async function POST(request: Request) {
+  const { price, quantity = 1, metadata = {} } = await request.json();
+
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = createRouteHandlerClient({
+      cookies,
+    });
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
-    const customer = await createOrRetriveCustomer({
+    const customer = await createOrRetrieveCustomer({
       uuid: user?.id || "",
       email: user?.email || "",
     });
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       billing_address_collection: "required",
@@ -31,16 +35,16 @@ export async function POST(req: Request) {
       mode: "subscription",
       allow_promotion_codes: true,
       subscription_data: {
+        
         metadata,
       },
-
-      success_url: `${getUrl()}/account`,
-      cancel_url: getUrl(),
+      success_url: `${getURL()}/account`,
+      cancel_url: `${getURL()}/`,
     });
-
+    
     return NextResponse.json({ sessionId: session.id });
-  } catch (error) {
-    console.error("Error creating checkout session", error);
-    return new NextResponse("Error creating checkout session", { status: 500 });
+  } catch (err: any) {
+    console.log(err);
+    return new NextResponse("Internal Error", { status: 500 });
   }
 }

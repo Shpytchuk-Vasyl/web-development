@@ -1,14 +1,15 @@
-import { metadata } from "@/app/layout";
-import { Price, Product } from "@/types";
-import { Database } from "@/types_db";
-import { createClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
+import { createClient } from "@supabase/supabase-js";
+
+import { Database } from "@/types_db";
+import { Price, Product } from "@/types";
+
 import { stripe } from "./stripe";
 import { toDateTime } from "./helpers";
 
 export const supabaseAdmin = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL || "",
-  process.env.SUPABESE_SERVICE_ROLE_KEY || ""
+  process.env.SUPABASE_SERVICE_ROLE_KEY || ""
 );
 
 const upsertProductRecord = async (product: Stripe.Product) => {
@@ -22,13 +23,8 @@ const upsertProductRecord = async (product: Stripe.Product) => {
   };
 
   const { error } = await supabaseAdmin.from("products").upsert([productData]);
-
-  if (error) {
-    console.error("Error upserting product", error);
-    throw error;
-  }
-
-  console.log("Upserted product", productData);
+  if (error) throw error;
+  console.log(`Product inserted/updated: ${product.id}`);
 };
 
 const upsertPriceRecord = async (price: Stripe.Price) => {
@@ -47,16 +43,11 @@ const upsertPriceRecord = async (price: Stripe.Price) => {
   };
 
   const { error } = await supabaseAdmin.from("prices").upsert([priceData]);
-
-  if (error) {
-    console.error("Error upserting price", error);
-    throw error;
-  }
-
-  console.log("Upserted price", priceData);
+  if (error) throw error;
+  console.log(`Price inserted/updated: ${price.id}`);
 };
 
-const createOrRetriveCustomer = async ({
+const createOrRetrieveCustomer = async ({
   email,
   uuid,
 }: {
@@ -68,29 +59,22 @@ const createOrRetriveCustomer = async ({
     .select("stripe_customer_id")
     .eq("id", uuid)
     .single();
-
   if (error || !data?.stripe_customer_id) {
     const customerData: { metadata: { supabaseUUID: string }; email?: string } =
       {
-        metadata: { supabaseUUID: uuid },
+        metadata: {
+          supabaseUUID: uuid,
+        },
       };
-
     if (email) customerData.email = email;
-
     const customer = await stripe.customers.create(customerData);
     const { error: supabaseError } = await supabaseAdmin
       .from("customers")
       .insert([{ id: uuid, stripe_customer_id: customer.id }]);
-
-    if (supabaseError) {
-      console.error("Error creating customer", supabaseError);
-      throw supabaseError;
-    }
-
-    console.log("Created customer", customer);
+    if (supabaseError) throw supabaseError;
+    console.log(`New customer created and inserted for ${uuid}.`);
     return customer.id;
   }
-
   return data.stripe_customer_id;
 };
 
@@ -98,98 +82,103 @@ const copyBillingDetailsToCustomer = async (
   uuid: string,
   payment_method: Stripe.PaymentMethod
 ) => {
+  //Todo: check this assertion
   const customer = payment_method.customer as string;
   const { name, phone, address } = payment_method.billing_details;
   if (!name || !phone || !address) return;
-
   //@ts-ignore
   await stripe.customers.update(customer, { name, phone, address });
   const { error } = await supabaseAdmin
     .from("users")
     .update({
       billing_address: { ...address },
-      payment_method_id: { ...payment_method[payment_method.type] },
+      payment_method: { ...payment_method[payment_method.type] },
     })
     .eq("id", uuid);
-
-  if (error) {
-    console.error("Error updating user", error);
-    throw error;
-  }
+  if (error) throw error;
 };
 
-const menageSubscriptionStatusChange = async (
-  subsciptionId: string,
+const manageSubscriptionStatusChange = async (
+  subscriptionId: string,
   customerId: string,
   createAction = false
 ) => {
-  const { data: customerData, error: customerError } = await supabaseAdmin
+  // Get customer's UUID from mapping table.
+  const { data: customerData, error: noCustomerError } = await supabaseAdmin
     .from("customers")
     .select("id")
     .eq("stripe_customer_id", customerId)
     .single();
-
-  if (customerError) {
-    console.error("Error getting customer", customerError);
-    throw customerError;
-  }
+  if (noCustomerError) throw noCustomerError;
 
   const { id: uuid } = customerData!;
-  const subsciption = await stripe.subscriptions.retrieve(subsciptionId, {
+
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
     expand: ["default_payment_method"],
   });
-
-  const subsciptionData: Database["public"]["Tables"]["subscriptions"]["Insert"] =
+  console.log(
+    "\n\n\n\n\n\n\n\n\n\\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n subscription",
+    subscription
+  );
+  // Upsert the latest status of the subscription object.
+  const subscriptionData: Database["public"]["Tables"]["subscriptions"]["Insert"] =
     {
-      id: subsciption.id,
+      id: subscription.id,
       user_id: uuid,
-      metadata: subsciption.metadata,
-      //@ts-ignore
-      status: subsciption.status,
-      price_id: subsciption.items.data[0].price.id,
-      //@ts-ignore
-      quantity: subscriptiom.quantity,
-      cancel_at_period_end: subsciption.cancel_at_period_end,
-      cancel_at: subsciption.cancel_at
-        ? toDateTime(subsciption.cancel_at).toISOString()
+      metadata: subscription.metadata,
+      // @ts-ignore
+      status: subscription.status,
+      price_id: subscription.items.data[0].price.id,
+      //TODO check quantity on subscription
+      // @ts-ignore
+      quantity: subscription.quantity,
+      cancel_at_period_end: subscription.cancel_at_period_end,
+      cancel_at: subscription.cancel_at
+        ? toDateTime(subscription.cancel_at).toISOString()
         : null,
-      canceled_at: subsciption.canceled_at
-        ? toDateTime(subsciption.canceled_at).toISOString()
+      canceled_at: subscription.canceled_at
+        ? toDateTime(subscription.canceled_at).toISOString()
         : null,
-      current_period_end: toDateTime(
-        subsciption.current_period_end
-      ).toISOString(),
       current_period_start: toDateTime(
-        subsciption.current_period_start
+        subscription.current_period_start
       ).toISOString(),
-      created: toDateTime(subsciption.created).toISOString(),
-      ended_at: subsciption.ended_at
-        ? toDateTime(subsciption.ended_at).toISOString()
+      current_period_end: toDateTime(
+        subscription.current_period_end
+      ).toISOString(),
+      created: toDateTime(subscription.created).toISOString(),
+      ended_at: subscription.ended_at
+        ? toDateTime(subscription.ended_at).toISOString()
         : null,
-      trial_start: subsciption.trial_start
-        ? toDateTime(subsciption.trial_start).toISOString()
+      trial_start: subscription.trial_start
+        ? toDateTime(subscription.trial_start).toISOString()
         : null,
-      trial_end: subsciption.trial_end
-        ? toDateTime(subsciption.trial_end).toISOString()
+      trial_end: subscription.trial_end
+        ? toDateTime(subscription.trial_end).toISOString()
         : null,
     };
-  const { error: subscriptionError } = await supabaseAdmin
+  console.log(subscriptionData, "subscriptionData");
+  await new Promise((resolve) => setTimeout(resolve, 10000));
+  const { error } = await supabaseAdmin
     .from("subscriptions")
-    .upsert([subsciptionData]);
+    .upsert([subscriptionData]);
+  if (error) throw error;
+  console.log(
+    `Inserted/updated subscription [${subscription.id}] for user [${uuid}]`
+  );
 
-  if (subscriptionError) {
-    console.error("Error upserting subscription", subscriptionError);
-    throw subscriptionError;
-  }
-
-  console.log("Updated/inserted subscription", subsciptionData);
-
-  if (createAction && subsciption.default_payment_method && uuid) {
+  // For a new subscription copy the billing details to the customer object.
+  // NOTE: This is a costly operation and should happen at the very end.
+  if (createAction && subscription.default_payment_method && uuid)
+    //@ts-ignore
     await copyBillingDetailsToCustomer(
       uuid,
-      subsciption.default_payment_method as Stripe.PaymentMethod
+      subscription.default_payment_method as Stripe.PaymentMethod
     );
-  }
 };
 
-export { upsertPriceRecord, upsertProductRecord, createOrRetriveCustomer, menageSubscriptionStatusChange};
+export {
+  upsertProductRecord,
+  upsertPriceRecord,
+  createOrRetrieveCustomer,
+  manageSubscriptionStatusChange,
+};
